@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func TestHandleWaitResult_WithRealSignal(t *testing.T) {

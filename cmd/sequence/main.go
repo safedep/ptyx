@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func main() {
@@ -29,7 +29,9 @@ func main() {
 
 	fmt.Printf("[DEMO] Spawning shell '%s' in a PTY...\n", shell)
 	s, err := ptyx.Spawn(spawnCtx, ptyx.SpawnOpts{Prog: shell})
-	if err != nil { log.Fatalf("Failed to spawn: %v", err) }
+	if err != nil {
+		log.Fatalf("Failed to spawn: %v", err)
+	}
 	defer s.Close()
 
 	if os.Getenv("PTYX_TEST_MODE") == "" {
@@ -63,7 +65,10 @@ func runCommandSequence(s ptyx.Session) error {
 			line := strings.TrimRight(sc.Text(), "\r")
 			fmt.Fprintln(os.Stdout, line)
 			if strings.TrimSpace(line) == done {
-				select { case cmdDone <- struct{}{}: default: }
+				select {
+				case cmdDone <- struct{}{}:
+				default:
+				}
 			}
 		}
 	}()

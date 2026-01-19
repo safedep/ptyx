@@ -9,9 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
-
 
 func TestParseResizeOpts(t *testing.T) {
 	tests := []struct {

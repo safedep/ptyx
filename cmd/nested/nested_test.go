@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func TestGetProjectRoot(t *testing.T) {

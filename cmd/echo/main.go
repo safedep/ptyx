@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 var (

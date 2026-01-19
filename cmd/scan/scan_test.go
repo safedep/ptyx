@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KennethanCeyer/ptyx"
-	"github.com/KennethanCeyer/ptyx/testptyx"
+	"github.com/safedep/ptyx"
+	"github.com/safedep/ptyx/testptyx"
 )
 
 type mockReader struct {

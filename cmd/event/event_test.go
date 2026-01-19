@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KennethanCeyer/ptyx"
-	"github.com/KennethanCeyer/ptyx/testptyx"
+	"github.com/safedep/ptyx"
+	"github.com/safedep/ptyx/testptyx"
 )
 
 func TestProcessStream(t *testing.T) {
