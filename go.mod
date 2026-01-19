@@ -1,4 +1,4 @@
-module github.com/KennethanCeyer/ptyx
+module github.com/safedep/ptyx
 
 go 1.24.0
 

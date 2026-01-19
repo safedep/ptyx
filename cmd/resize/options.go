@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 type Options struct {

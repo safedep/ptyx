@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 type eofSignalingReader struct {
@@ -47,14 +47,14 @@ func (r *errorReader) Read(p []byte) (n int, err error) {
 }
 
 type mockSequenceSession struct {
-	ptyIn   *bytes.Buffer
-	ptyOut  io.Reader
-	waitErr error
-	eofChan chan struct{}
+	ptyIn           *bytes.Buffer
+	ptyOut          io.Reader
+	waitErr         error
+	eofChan         chan struct{}
 	forceWriteError error
 }
 
-func (m *mockSequenceSession) PtyReader() io.Reader      { return m.ptyOut }
+func (m *mockSequenceSession) PtyReader() io.Reader { return m.ptyOut }
 func (m *mockSequenceSession) PtyWriter() io.Writer {
 	if m.forceWriteError != nil {
 		return &errorWriter{err: m.forceWriteError}
@@ -68,10 +68,10 @@ func (m *mockSequenceSession) Wait() error {
 	}
 	return m.waitErr
 }
-func (m *mockSequenceSession) Kill() error                 { return nil }
-func (m *mockSequenceSession) Close() error                { return nil }
-func (m *mockSequenceSession) Pid() int                    { return 1234 }
-func (m *mockSequenceSession) CloseStdin() error           { return nil }
+func (m *mockSequenceSession) Kill() error       { return nil }
+func (m *mockSequenceSession) Close() error      { return nil }
+func (m *mockSequenceSession) Pid() int          { return 1234 }
+func (m *mockSequenceSession) CloseStdin() error { return nil }
 
 func TestSequenceHelperProcess(t *testing.T) {
 	if os.Getenv("GO_TEST_SEQUENCE") == "1" {
@@ -162,7 +162,11 @@ func TestSequence_Interruption(t *testing.T) {
 			trim := strings.TrimSpace(line)
 
 			if strings.Contains(trim, "[[PTYX_READY]]") || strings.Contains(trim, "Loading...") {
-				select { case <-ready: default: close(ready) }
+				select {
+				case <-ready:
+				default:
+					close(ready)
+				}
 				cancel()
 				return
 			}

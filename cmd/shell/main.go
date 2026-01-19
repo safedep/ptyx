@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 var (

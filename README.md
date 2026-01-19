@@ -5,9 +5,9 @@
 <p>
 
 <p align="center">
-  <a href="https://github.com/KennethanCeyer/ptyx/actions/workflows/ci.yaml"><img alt="CI Status" src="https://github.com/KennethanCeyer/ptyx/actions/workflows/ci.yaml/badge.svg"></a>
+  <a href="https://github.com/safedep/ptyx/actions/workflows/ci.yaml"><img alt="CI Status" src="https://github.com/safedep/ptyx/actions/workflows/ci.yaml/badge.svg"></a>
   <a href="https://go.dev"><img alt="Go" src="https://img.shields.io/badge/Go-%3E=1.24-00ADD8?logo=go"></a>
-  <a href="https://pkg.go.dev/github.com/KennethanCeyer/ptyx"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/KennethanCeyer/ptyx.svg"></a>
+  <a href="https://pkg.go.dev/github.com/safedep/ptyx"><img alt="Go Reference" src="https://pkg.go.dev/badge/github.com/safedep/ptyx.svg"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
   <img alt="Platform" src="https://img.shields.io/badge/Platform-macOS%20|%20Linux%20|%20Windows-blue.svg">
 </p>
@@ -44,7 +44,7 @@ The architecture consists of three main components:
 ## Installation
 
 ```bash
-go get github.com/KennethanCeyer/ptyx
+go get github.com/safedep/ptyx
 ```
 
 ## Run the demos
@@ -101,7 +101,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func main() {
@@ -142,7 +142,7 @@ import (
 	"log"
 	"runtime"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func main() {
@@ -213,7 +213,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func main() {

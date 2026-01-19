@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func TestMainHelper(t *testing.T) {

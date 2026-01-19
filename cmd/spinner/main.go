@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/KennethanCeyer/ptyx"
+	"github.com/safedep/ptyx"
 )
 
 func main() {
