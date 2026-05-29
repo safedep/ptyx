@@ -73,6 +73,17 @@ func (s *unixSession) CloseStdin() error {
 	return s.master.Close()
 }
 
+// enableOutputPostProcessing turns OPOST (and ONLCR) back on after raw mode so
+// that bare "\n" written directly to the terminal is mapped to "\r\n".
+func enableOutputPostProcessing(fd int) error {
+	t, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
+	if err != nil {
+		return err
+	}
+	t.Oflag |= unix.OPOST | unix.ONLCR
+	return unix.IoctlSetTermios(fd, ioctlSetTermios, t)
+}
+
 func setWinsize(fd int, cols, rows int) error {
 	ws := &unix.Winsize{Col: uint16(cols), Row: uint16(rows)}
 	return unix.IoctlSetWinsize(fd, unix.TIOCSWINSZ, ws)

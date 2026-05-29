@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func newPlatformTestConsole(t *testing.T) (Console, func()) {
@@ -24,6 +26,37 @@ func newPlatformTestConsole(t *testing.T) (Console, func()) {
 		c.Close()
 		master.Close()
 		slave.Close()
+	}
+}
+
+func TestUnixConsole_MakeRawKeepsOutputPostProcessing(t *testing.T) {
+	c, cleanup := newTestConsole(t)
+	defer cleanup()
+
+	consoleImpl, ok := c.(*console)
+	if !ok {
+		t.Fatal("test console is not of type *console")
+	}
+	fd := int(consoleImpl.in.Fd())
+
+	st, err := c.MakeRaw()
+	if err != nil {
+		t.Fatalf("MakeRaw() failed: %v", err)
+	}
+	defer func() { _ = c.Restore(st) }()
+
+	tio, err := unix.IoctlGetTermios(fd, ioctlGetTermios)
+	if err != nil {
+		t.Fatalf("IoctlGetTermios() failed: %v", err)
+	}
+
+	// Raw mode must keep OPOST/ONLCR so writes made directly to the terminal
+	// (logs, prompts) still get NL->CRNL translation instead of staircasing.
+	if tio.Oflag&unix.OPOST == 0 {
+		t.Error("OPOST should remain set after MakeRaw()")
+	}
+	if tio.Oflag&unix.ONLCR == 0 {
+		t.Error("ONLCR should remain set after MakeRaw()")
 	}
 }
 
