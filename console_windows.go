@@ -24,6 +24,10 @@ func (c *console) EnableVT() {
 	}
 }
 
+// enableOutputPostProcessing is a no-op on Windows; newline handling for the
+// console is controlled via the VT flags set in EnableVT.
+func enableOutputPostProcessing(fd int) error { return nil }
+
 func (c *console) initResizeWatcher() {
 	c.win = &resizeWatcher{C: make(chan struct{}, 1), stop: make(chan struct{}), ready: make(chan struct{})}
 	go func() {

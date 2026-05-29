@@ -289,3 +289,25 @@ type RawState interface{}
 
 - Unix/macOS/WSL: full PTY support using openpty or /dev/ptmx.
 - Windows: Full ConPTY session support, console VT, and resize.
+
+## Trade-offs
+
+### Raw mode keeps output newline translation enabled
+
+`MakeRaw` switches the console into raw mode so key presses pass straight through
+to the PTY, but unlike a plain `term.MakeRaw` it **keeps output post-processing
+(`OPOST`/`ONLCR`) enabled**. A bare `\n` written directly to the terminal is
+therefore still translated to `\r\n`, so log lines, spinners, and prompts that the
+host program prints while raw mode is active start at the left edge instead of
+"staircasing" diagonally down the screen.
+
+The trade-off is that raw mode is **not byte-transparent on output**:
+
+- **Line-oriented output is unaffected.** A child program's PTY output already
+  arrives `\r\n`-terminated, so re-translation is a harmless no-op.
+- **Full-screen TUI children may render incorrectly.** Apps like `vim`, `htop`, or
+  `less` emit bare `\n` as literal cursor movement; when their output is copied
+  straight to this terminal, the added `\r` can shift the cursor unexpectedly.
+
+Input handling, `Ctrl-C`, echo suppression, and `Restore` are unaffected — only the
+output newline translation differs.

@@ -111,6 +111,13 @@ func (c *console) MakeRaw() (RawState, error) {
 	if err != nil {
 		return nil, err
 	}
+	// term.MakeRaw clears OPOST, which disables the terminal's NL->CRNL (ONLCR)
+	// translation. The child PTY stays fully raw, but anything written directly
+	// to this terminal (logs, spinner, prompts) would then staircase. Re-enable
+	// output post-processing so those writes get CRLF; the child is unaffected
+	// since its output already arrives CRLF-terminated from the PTY slave.
+	// Best-effort: raw mode is already set, this only affects cosmetic output.
+	_ = enableOutputPostProcessing(fd)
 	r := &rawState{st: st, fd: fd}
 	c.raw = r
 	return r, nil
