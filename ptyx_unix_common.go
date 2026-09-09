@@ -21,6 +21,9 @@ func Spawn(ctx context.Context, opts SpawnOpts) (sess Session, err error) {
 	if opts.Prog == "" {
 		return nil, errors.New("ptyx: empty program")
 	}
+	if opts.CmdLine != "" {
+		return nil, ErrCmdLineUnsupported
+	}
 	m, s, err := openPTY()
 	if err != nil {
 		return nil, err

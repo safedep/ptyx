@@ -287,3 +287,13 @@ func isPTYEOF(err error) bool {
 	var errno syscall.Errno
 	return errors.As(err, &errno) && (errno == syscall.EIO || errno == 0)
 }
+
+// TestSpawnRejectsCmdLine keeps CmdLine from being silently ignored off
+// Windows. A caller that sets it gets an error rather than a different result
+// per platform.
+func TestSpawnRejectsCmdLine(t *testing.T) {
+	_, err := Spawn(context.Background(), SpawnOpts{Prog: "/bin/sh", CmdLine: "/bin/sh -c true"})
+	if !errors.Is(err, ErrCmdLineUnsupported) {
+		t.Fatalf("Spawn error = %v, want ErrCmdLineUnsupported", err)
+	}
+}

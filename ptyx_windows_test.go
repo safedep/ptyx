@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
@@ -32,6 +33,15 @@ func TestWinHelperProcess(t *testing.T) {
 		fmt.Println(wd)
 	case "exit":
 		os.Exit(17)
+	case "cmdline":
+		// The command line travels back through a file, not through the PTY.
+		// conpty rewraps a long output line, and the parent must be able to
+		// print the exact string the child saw when the comparison fails.
+		if err := os.WriteFile(os.Getenv("PTYX_CMDLINE_OUT"),
+			[]byte(windows.UTF16PtrToString(windows.GetCommandLine())), 0o600); err != nil {
+			os.Exit(42)
+		}
+		os.Exit(0)
 	default:
 		fmt.Println("noop")
 	}
@@ -247,4 +257,57 @@ func spawnReadOneLineAndCloseWin(ctx context.Context, opts SpawnOpts, timeout ti
 		return strings.TrimSpace(parts[0]), nil
 	}
 	return "", nil
+}
+
+// TestWindowsSpawn_CmdLine proves that Spawn hands CreateProcess the caller's
+// CmdLine byte for byte. A caller that starts a batch file through cmd.exe
+// depends on it: buildCommandLine escapes with the CommandLineToArgvW rules,
+// which cmd.exe does not read.
+func TestWindowsSpawn_CmdLine(t *testing.T) {
+	t.Run("ReachesChildUnchanged", func(t *testing.T) {
+		// A caret and an ampersand survive only when nothing re-escapes them.
+		want := windows.EscapeArg(os.Args[0]) + ` -test.run=^TestWinHelperProcess$ a^b&c "d e"`
+		out := filepath.Join(t.TempDir(), "cmdline.txt")
+
+		s, err := Spawn(context.Background(), SpawnOpts{
+			Prog:    os.Args[0],
+			CmdLine: want,
+			Cols:    120,
+			Rows:    30,
+			Env: append(os.Environ(),
+				"PTYX_HELPER=1",
+				"MODE=cmdline",
+				"PTYX_CMDLINE_OUT="+out,
+			),
+		})
+		if err != nil {
+			t.Fatalf("Spawn failed: %v", err)
+		}
+		defer s.Close()
+
+		go io.Copy(io.Discard, s.PtyReader())
+
+		if err := s.Wait(); err != nil {
+			t.Fatalf("helper exited with an error: %v", err)
+		}
+
+		got, err := os.ReadFile(out)
+		if err != nil {
+			t.Fatalf("helper wrote no command line: %v", err)
+		}
+		if string(got) != want {
+			t.Errorf("child command line\n got: %q\nwant: %q", string(got), want)
+		}
+	})
+
+	t.Run("RejectsArgs", func(t *testing.T) {
+		_, err := Spawn(context.Background(), SpawnOpts{
+			Prog:    os.Args[0],
+			CmdLine: "whatever",
+			Args:    []string{"-test.run=^TestWinHelperProcess$"},
+		})
+		if !errors.Is(err, ErrCmdLineWithArgs) {
+			t.Fatalf("Spawn error = %v, want ErrCmdLineWithArgs", err)
+		}
+	})
 }
