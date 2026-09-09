@@ -57,6 +57,10 @@ func buildEnvBlock(env []string) []uint16 {
 }
 
 func Spawn(ctx context.Context, opts SpawnOpts) (Session, error) {
+	if opts.CmdLine != "" && len(opts.Args) > 0 {
+		return nil, ErrCmdLineWithArgs
+	}
+
 	con, err := NewConPty(opts.Cols, opts.Rows, 0)
 	if err != nil {
 		return nil, err
@@ -74,7 +78,10 @@ func Spawn(ctx context.Context, opts SpawnOpts) (Session, error) {
 		return nil, err
 	}
 
-	cmdline := buildCommandLine(progPath, opts.Args)
+	cmdline := opts.CmdLine
+	if cmdline == "" {
+		cmdline = buildCommandLine(progPath, opts.Args)
+	}
 
 	siEx := new(windows.StartupInfoEx)
 	siEx.Cb = uint32(unsafe.Sizeof(*siEx))

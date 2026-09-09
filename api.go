@@ -41,6 +41,16 @@ type SpawnOpts struct {
 	Dir  string
 	Cols int
 	Rows int
+
+	// CmdLine is the raw Windows command line for the child. Spawn passes it
+	// to CreateProcess without any escaping, so the caller owns every quote.
+	// Set it only when the CommandLineToArgvW rules that Args follows are the
+	// wrong rules, for example to start a batch file through cmd.exe.
+	//
+	// Windows only. Every other platform rejects a non-empty CmdLine, so a
+	// caller fails loudly instead of getting a different result per platform.
+	// CmdLine and Args are mutually exclusive.
+	CmdLine string
 }
 
 type Mux interface {
