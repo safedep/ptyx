@@ -84,7 +84,10 @@ func TestWinSession_ConcurrentShutdown(t *testing.T) {
 		}
 		close(start)
 		done := make(chan struct{})
-		go func() { wg.Wait(); close(done) }()
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
 		select {
 		case <-done:
 		case <-time.After(5 * time.Second):
@@ -130,6 +133,9 @@ func TestWinSession_CancelAfterClose(t *testing.T) {
 	}
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if err := session.Wait(); err != nil {
+		t.Fatalf("Wait after Close lost the successful exit status: %v", err)
 	}
 	<-drained
 
