@@ -115,12 +115,24 @@ func TestWinSession_CancelAfterClose(t *testing.T) {
 	defer windows.CloseHandle(victim.Process)
 	defer windows.TerminateProcess(victim.Process, 99)
 
+	for attempt := 0; attempt < 10; attempt++ {
+		if cancelAfterHandleReuse(t, prog, victim.Process) {
+			return
+		}
+	}
+	t.Skip("Windows did not reuse the closed process handle")
+}
+
+func cancelAfterHandleReuse(t *testing.T, prog string, victim windows.Handle) bool {
+	t.Helper()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	session, err := Spawn(ctx, SpawnOpts{Prog: prog, Args: []string{"/d", "/c", "exit", "0"}, Cols: 80, Rows: 25})
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer session.Close()
 	oldHandle := session.(*winSession).process
 	oldPID := session.Pid()
 	drained := make(chan struct{})
@@ -148,7 +160,7 @@ func TestWinSession_CancelAfterClose(t *testing.T) {
 	reused := false
 	for i := 0; i < 16384; i++ {
 		var alias windows.Handle
-		if err := windows.DuplicateHandle(windows.CurrentProcess(), victim.Process, windows.CurrentProcess(), &alias, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
+		if err := windows.DuplicateHandle(windows.CurrentProcess(), victim, windows.CurrentProcess(), &alias, 0, false, windows.DUPLICATE_SAME_ACCESS); err != nil {
 			t.Fatal(err)
 		}
 		aliases = append(aliases, alias)
@@ -158,25 +170,25 @@ func TestWinSession_CancelAfterClose(t *testing.T) {
 		}
 	}
 	if !reused {
-		t.Fatal("Could not reproduce handle reuse")
+		return false
 	}
 	currentPID, err := windows.GetProcessId(oldHandle)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("Closed session PID %d handle %d now refers to unrelated suspended PID %d", oldPID, oldHandle, currentPID)
-	status, err := windows.WaitForSingleObject(victim.Process, 100)
+	status, err := windows.WaitForSingleObject(victim, 100)
 	if err != nil || status != uint32(windows.WAIT_TIMEOUT) {
 		t.Fatalf("Victim must be alive before cancellation: status=%d err=%v", status, err)
 	}
 	cancel()
-	status, err = windows.WaitForSingleObject(victim.Process, 1000)
+	status, err = windows.WaitForSingleObject(victim, 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if status == windows.WAIT_OBJECT_0 {
 		var code uint32
-		if err := windows.GetExitCodeProcess(victim.Process, &code); err != nil {
+		if err := windows.GetExitCodeProcess(victim, &code); err != nil {
 			t.Fatal(err)
 		}
 		t.Fatalf("cancel after Close killed unrelated PID %d through reused handle %d, exit code %d", currentPID, oldHandle, code)
@@ -184,4 +196,5 @@ func TestWinSession_CancelAfterClose(t *testing.T) {
 	if status != uint32(windows.WAIT_TIMEOUT) {
 		t.Fatalf("unexpected wait status %d", status)
 	}
+	return true
 }
