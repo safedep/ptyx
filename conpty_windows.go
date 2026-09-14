@@ -3,6 +3,7 @@
 package ptyx
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -17,9 +18,9 @@ type ConPty struct {
 	outR_hostRead windows.Handle
 	inFile        *os.File
 	outFile       *os.File
-	attrList *windows.ProcThreadAttributeListContainer
+	attrList      *windows.ProcThreadAttributeListContainer
 	size          windows.Coord
-	closeOnce sync.Once
+	closeOnce     sync.Once
 }
 
 func NewConPty(w, h int, flags uint32) (c *ConPty, err error) {
@@ -110,8 +111,11 @@ func (c *ConPty) Close() error {
 		e2 = c.outFile.Close()
 		c.outFile = nil
 	}
-	if e1 != nil {
+	if e1 != nil && !errors.Is(e1, os.ErrClosed) {
 		return e1
+	}
+	if errors.Is(e2, os.ErrClosed) {
+		return nil
 	}
 	return e2
 }

@@ -4,6 +4,7 @@ package ptyx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -244,8 +245,8 @@ func (s *winSession) closeCon() error {
 
 func (s *winSession) Kill() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.process == 0 {
+		s.mu.Unlock()
 		return nil
 	}
 	atomic.StoreUint32(&s.killed, 1)
@@ -255,6 +256,7 @@ func (s *winSession) Kill() error {
 	}
 	_ = windows.TerminateProcess(s.process, 1)
 	st, _ := windows.WaitForSingleObject(s.process, 1500)
+	s.mu.Unlock()
 	if st == uint32(windows.WAIT_TIMEOUT) {
 		return s.closeCon()
 	}
@@ -265,20 +267,21 @@ func (s *winSession) Close() error {
 	var err error
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
-		defer s.mu.Unlock()
 		close(s.done)
+		process, thread := s.process, s.thread
+		s.process, s.thread = 0, 0
 		if s.job != 0 {
 			windows.CloseHandle(s.job)
 			s.job = 0
 		}
-		_ = windows.TerminateProcess(s.process, 1)
+		_ = windows.TerminateProcess(process, 1)
+		s.mu.Unlock()
+		// Console cleanup can wait for a reader that needs to call Kill.
 		err = s.closeCon()
 		// The waiter owns the process handle until it records the exit status.
 		<-s.waitDone
-		_ = windows.CloseHandle(s.process)
-		s.process = 0
-		_ = windows.CloseHandle(s.thread)
-		s.thread = 0
+		_ = windows.CloseHandle(process)
+		_ = windows.CloseHandle(thread)
 	})
 	return err
 }
@@ -287,5 +290,9 @@ func (s *winSession) CloseStdin() error {
 	if s == nil || s.stdin == nil {
 		return nil
 	}
-	return s.stdin.Close()
+	err := s.stdin.Close()
+	if errors.Is(err, os.ErrClosed) {
+		return nil
+	}
+	return err
 }
