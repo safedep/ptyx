@@ -4,6 +4,7 @@ package ptyx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,14 +19,22 @@ import (
 )
 
 type winSession struct {
-	con      *ConPty
-	pid      int
-	process  windows.Handle
-	thread   windows.Handle
-	job      windows.Handle
-	killed   uint32
+	con       *ConPty
+	stdin     *os.File
+	stdout    *os.File
+	pid       int
+	mu        sync.Mutex
+	process   windows.Handle
+	thread    windows.Handle
+	job       windows.Handle
+	killed    uint32
+	done      chan struct{}
+	waitDone  chan struct{}
+	waitErr   error
+	exitCode  uint32
 	closeOnce sync.Once
 	conOnce   sync.Once
+	conErr    error
 }
 
 func buildCommandLine(prog string, args []string) string {
@@ -171,63 +180,45 @@ func Spawn(ctx context.Context, opts SpawnOpts) (Session, error) {
 	}
 
 	sess := &winSession{
-		con:     con,
-		pid:     int(pi.ProcessId),
-		process: pi.Process,
-		thread:  pi.Thread,
-		job:     job,
-	}
-
-	closeCon := func() {
-		sess.conOnce.Do(func() {
-			if sess.con != nil {
-				_ = sess.con.Close()
-			}
-		})
+		con:      con,
+		stdin:    con.inFile,
+		stdout:   con.outFile,
+		pid:      int(pi.ProcessId),
+		process:  pi.Process,
+		thread:   pi.Thread,
+		job:      job,
+		done:     make(chan struct{}),
+		waitDone: make(chan struct{}),
 	}
 
 	go func() {
-		<-ctx.Done()
-		atomic.StoreUint32(&sess.killed, 1)
-		if sess.job != 0 {
-			windows.CloseHandle(sess.job)
-			sess.job = 0
-		}
-		_ = windows.TerminateProcess(pi.Process, 1)
-		st, _ := windows.WaitForSingleObject(pi.Process, 1500)
-		if st == uint32(windows.WAIT_TIMEOUT) {
-			closeCon()
+		select {
+		case <-ctx.Done():
+			_ = sess.Kill()
+		case <-sess.done:
 		}
 	}()
 
-	go func() {
-		_, _ = windows.WaitForSingleObject(pi.Process, windows.INFINITE)
-		closeCon()
-	}()
+	go sess.waitProcess(pi.Process)
 
 	return sess, nil
 }
 
-func (s *winSession) PtyReader() io.Reader        { return s.con.outFile }
-func (s *winSession) PtyWriter() io.Writer        { return s.con.inFile }
+func (s *winSession) PtyReader() io.Reader        { return s.stdout }
+func (s *winSession) PtyWriter() io.Writer        { return s.stdin }
 func (s *winSession) Resize(cols, rows int) error { return s.con.resize(cols, rows) }
 func (s *winSession) Pid() int                    { return s.pid }
 
 func (s *winSession) Wait() error {
-	st, err := windows.WaitForSingleObject(s.process, windows.INFINITE)
-	if err != nil {
-		return err
+	<-s.waitDone
+	if s.waitErr != nil {
+		return s.waitErr
 	}
-	if st != windows.WAIT_OBJECT_0 {
-		return fmt.Errorf("unexpected wait status: %d", st)
-	}
-	var code uint32
-	if err := windows.GetExitCodeProcess(s.process, &code); err != nil {
-		return err
-	}
+	code := s.exitCode
 	if atomic.LoadUint32(&s.killed) == 1 {
-		if code == 0 { return &ExitError{ExitCode: 1, waitStatus: nil} }
-		return &ExitError{ExitCode: int(code), waitStatus: nil}
+		if code == 0 {
+			code = 1
+		}
 	}
 	if code == 0 {
 		return nil
@@ -235,7 +226,17 @@ func (s *winSession) Wait() error {
 	return &ExitError{ExitCode: int(code), waitStatus: nil}
 }
 
+func (s *winSession) closeCon() error {
+	s.conOnce.Do(func() { s.conErr = s.con.Close() })
+	return s.conErr
+}
+
 func (s *winSession) Kill() error {
+	s.mu.Lock()
+	if s.process == 0 {
+		s.mu.Unlock()
+		return nil
+	}
 	atomic.StoreUint32(&s.killed, 1)
 	if s.job != 0 {
 		windows.CloseHandle(s.job)
@@ -243,12 +244,9 @@ func (s *winSession) Kill() error {
 	}
 	_ = windows.TerminateProcess(s.process, 1)
 	st, _ := windows.WaitForSingleObject(s.process, 1500)
+	s.mu.Unlock()
 	if st == uint32(windows.WAIT_TIMEOUT) {
-		s.conOnce.Do(func() {
-			if s.con != nil {
-				_ = s.con.Close()
-			}
-		})
+		go func() { _ = s.closeCon() }()
 	}
 	return nil
 }
@@ -256,32 +254,55 @@ func (s *winSession) Kill() error {
 func (s *winSession) Close() error {
 	var err error
 	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		close(s.done)
+		process, thread := s.process, s.thread
+		s.process, s.thread = 0, 0
 		if s.job != 0 {
 			windows.CloseHandle(s.job)
 			s.job = 0
 		}
-		s.conOnce.Do(func() {
-			if s.con != nil {
-				if e := s.con.Close(); err == nil {
-					err = e
-				}
-			}
-		})
-		if s.process != 0 {
-			_ = windows.CloseHandle(s.process)
-			s.process = 0
+		_ = windows.TerminateProcess(process, 1)
+		s.mu.Unlock()
+		// Console cleanup can wait for a reader that needs to call Kill.
+		err = s.closeCon()
+		releaseHandles := func() {
+			<-s.waitDone
+			_ = windows.CloseHandle(process)
+			_ = windows.CloseHandle(thread)
 		}
-		if s.thread != 0 {
-			_ = windows.CloseHandle(s.thread)
-			s.thread = 0
+		select {
+		case <-s.waitDone:
+			releaseHandles()
+		default:
+			// Keep the waiter's handles valid without blocking Close on exit.
+			go releaseHandles()
 		}
 	})
 	return err
 }
 
 func (s *winSession) CloseStdin() error {
-	if s == nil || s.con == nil || s.con.inFile == nil {
+	if s == nil || s.stdin == nil {
 		return nil
 	}
-	return s.con.inFile.Close()
+	err := s.stdin.Close()
+	if errors.Is(err, os.ErrClosed) {
+		return nil
+	}
+	return err
+}
+
+func (s *winSession) waitProcess(process windows.Handle) {
+	st, err := windows.WaitForSingleObject(process, windows.INFINITE)
+	if err == nil {
+		if st != windows.WAIT_OBJECT_0 {
+			err = fmt.Errorf("unexpected wait status: %d", st)
+		} else {
+			err = windows.GetExitCodeProcess(process, &s.exitCode)
+		}
+	}
+	s.waitErr = err
+	close(s.waitDone)
+	_ = s.closeCon()
 }

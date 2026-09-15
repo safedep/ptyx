@@ -3,6 +3,7 @@
 package ptyx
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -12,14 +13,15 @@ import (
 )
 
 type ConPty struct {
+	mu            sync.Mutex
 	hpc           *windows.Handle
 	inR_hostWrite windows.Handle
 	outR_hostRead windows.Handle
 	inFile        *os.File
 	outFile       *os.File
-	attrList *windows.ProcThreadAttributeListContainer
+	attrList      *windows.ProcThreadAttributeListContainer
 	size          windows.Coord
-	closeOnce sync.Once
+	closeOnce     sync.Once
 }
 
 func NewConPty(w, h int, flags uint32) (c *ConPty, err error) {
@@ -89,8 +91,15 @@ func NewConPty(w, h int, flags uint32) (c *ConPty, err error) {
 
 func (c *ConPty) ClosePty() {
 	c.closeOnce.Do(func() {
-		if c.hpc != nil && *c.hpc != 0 {
-			windows.ClosePseudoConsole(*c.hpc)
+		c.mu.Lock()
+		var hpc windows.Handle
+		if c.hpc != nil {
+			hpc = *c.hpc
+			*c.hpc = 0
+		}
+		c.mu.Unlock()
+		if hpc != 0 {
+			windows.ClosePseudoConsole(hpc)
 		}
 	})
 }
@@ -110,8 +119,11 @@ func (c *ConPty) Close() error {
 		e2 = c.outFile.Close()
 		c.outFile = nil
 	}
-	if e1 != nil {
+	if e1 != nil && !errors.Is(e1, os.ErrClosed) {
 		return e1
+	}
+	if errors.Is(e2, os.ErrClosed) {
+		return nil
 	}
 	return e2
 }
@@ -119,6 +131,11 @@ func (c *ConPty) Close() error {
 func (c *ConPty) resize(w, h int) error {
 	if c == nil {
 		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.hpc == nil || *c.hpc == 0 {
+		return os.ErrClosed
 	}
 	c.size = windows.Coord{X: int16(w), Y: int16(h)}
 	return windows.ResizePseudoConsole(*c.hpc, c.size)

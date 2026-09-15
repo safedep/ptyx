@@ -121,6 +121,13 @@ func TestWinSession_Wait_ExitError(t *testing.T) {
 	if !errors.As(waitErr, &exitErr) || exitErr.ExitCode != 17 {
 		t.Fatalf("Wait() error = %v (type %T), want *ptyx.ExitError with code 17", waitErr, waitErr)
 	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitErr = s.Wait()
+	if !errors.As(waitErr, &exitErr) || exitErr.ExitCode != 17 {
+		t.Fatalf("Wait() after Close() = %v, want exit code 17", waitErr)
+	}
 }
 
 func TestWinSession_Kill(t *testing.T) {
