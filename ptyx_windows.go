@@ -199,19 +199,7 @@ func Spawn(ctx context.Context, opts SpawnOpts) (Session, error) {
 		}
 	}()
 
-	go func() {
-		st, err := windows.WaitForSingleObject(pi.Process, windows.INFINITE)
-		if err == nil {
-			if st != windows.WAIT_OBJECT_0 {
-				err = fmt.Errorf("unexpected wait status: %d", st)
-			} else {
-				err = windows.GetExitCodeProcess(pi.Process, &sess.exitCode)
-			}
-		}
-		sess.waitErr = err
-		close(sess.waitDone)
-		_ = sess.closeCon()
-	}()
+	go sess.waitProcess(pi.Process)
 
 	return sess, nil
 }
@@ -258,7 +246,7 @@ func (s *winSession) Kill() error {
 	st, _ := windows.WaitForSingleObject(s.process, 1500)
 	s.mu.Unlock()
 	if st == uint32(windows.WAIT_TIMEOUT) {
-		return s.closeCon()
+		go func() { _ = s.closeCon() }()
 	}
 	return nil
 }
@@ -278,10 +266,18 @@ func (s *winSession) Close() error {
 		s.mu.Unlock()
 		// Console cleanup can wait for a reader that needs to call Kill.
 		err = s.closeCon()
-		// The waiter owns the process handle until it records the exit status.
-		<-s.waitDone
-		_ = windows.CloseHandle(process)
-		_ = windows.CloseHandle(thread)
+		releaseHandles := func() {
+			<-s.waitDone
+			_ = windows.CloseHandle(process)
+			_ = windows.CloseHandle(thread)
+		}
+		select {
+		case <-s.waitDone:
+			releaseHandles()
+		default:
+			// Keep the waiter's handles valid without blocking Close on exit.
+			go releaseHandles()
+		}
 	})
 	return err
 }
@@ -295,4 +291,18 @@ func (s *winSession) CloseStdin() error {
 		return nil
 	}
 	return err
+}
+
+func (s *winSession) waitProcess(process windows.Handle) {
+	st, err := windows.WaitForSingleObject(process, windows.INFINITE)
+	if err == nil {
+		if st != windows.WAIT_OBJECT_0 {
+			err = fmt.Errorf("unexpected wait status: %d", st)
+		} else {
+			err = windows.GetExitCodeProcess(process, &s.exitCode)
+		}
+	}
+	s.waitErr = err
+	close(s.waitDone)
+	_ = s.closeCon()
 }

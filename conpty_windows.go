@@ -13,6 +13,7 @@ import (
 )
 
 type ConPty struct {
+	mu            sync.Mutex
 	hpc           *windows.Handle
 	inR_hostWrite windows.Handle
 	outR_hostRead windows.Handle
@@ -90,8 +91,15 @@ func NewConPty(w, h int, flags uint32) (c *ConPty, err error) {
 
 func (c *ConPty) ClosePty() {
 	c.closeOnce.Do(func() {
-		if c.hpc != nil && *c.hpc != 0 {
-			windows.ClosePseudoConsole(*c.hpc)
+		c.mu.Lock()
+		var hpc windows.Handle
+		if c.hpc != nil {
+			hpc = *c.hpc
+			*c.hpc = 0
+		}
+		c.mu.Unlock()
+		if hpc != 0 {
+			windows.ClosePseudoConsole(hpc)
 		}
 	})
 }
@@ -123,6 +131,11 @@ func (c *ConPty) Close() error {
 func (c *ConPty) resize(w, h int) error {
 	if c == nil {
 		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.hpc == nil || *c.hpc == 0 {
+		return os.ErrClosed
 	}
 	c.size = windows.Coord{X: int16(w), Y: int16(h)}
 	return windows.ResizePseudoConsole(*c.hpc, c.size)
