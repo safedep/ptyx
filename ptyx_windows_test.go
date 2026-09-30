@@ -14,6 +14,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf16"
@@ -317,4 +318,74 @@ func TestWindowsSpawn_CmdLine(t *testing.T) {
 			t.Fatalf("Spawn error = %v, want ErrCmdLineWithArgs", err)
 		}
 	})
+}
+
+// TestWindowsSpawn_InheritCursor proves that ConPTY asks the host for the
+// cursor position and does not clear the screen. A clear moves the visible
+// output of Windows Terminal into the scrollback.
+func TestWindowsSpawn_InheritCursor(t *testing.T) {
+	s, err := Spawn(context.Background(), SpawnOpts{
+		Prog:          os.Args[0],
+		Args:          []string{"-test.run=^TestWinHelperProcess$"},
+		Cols:          80,
+		Rows:          25,
+		Env:           append(os.Environ(), "PTYX_HELPER=1"),
+		InheritCursor: true,
+	})
+	if err != nil {
+		t.Fatalf("Spawn failed: %v", err)
+	}
+	defer s.Close()
+
+	var mu sync.Mutex
+	var out bytes.Buffer
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		buf := make([]byte, 8192)
+		for {
+			n, err := s.PtyReader().Read(buf)
+			mu.Lock()
+			out.Write(buf[:n])
+			mu.Unlock()
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	output := func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return out.String()
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for !strings.Contains(output(), "\x1b[6n") {
+		if time.Now().After(deadline) {
+			t.Fatalf("ConPTY sent no cursor position request, output: %q", output())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, err := s.PtyWriter().Write([]byte("\x1b[5;1R")); err != nil {
+		t.Fatalf("failed to write the cursor position reply: %v", err)
+	}
+
+	if err := s.Wait(); err != nil {
+		t.Fatalf("helper exited with an error: %v", err)
+	}
+	_ = s.Close()
+	select {
+	case <-readerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for PTY reader to finish after process exit")
+	}
+
+	got := output()
+	if !strings.Contains(stripANSI(got), "noop") {
+		t.Errorf("child output missing, got %q", got)
+	}
+	if strings.Contains(got, "\x1b[2J") {
+		t.Errorf("ConPTY cleared the screen, got %q", got)
+	}
 }
