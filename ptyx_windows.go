@@ -70,7 +70,12 @@ func Spawn(ctx context.Context, opts SpawnOpts) (Session, error) {
 		return nil, ErrCmdLineWithArgs
 	}
 
-	con, err := NewConPty(opts.Cols, opts.Rows, 0)
+	var conFlags uint32
+	if opts.InheritCursor {
+		conFlags = windows.PSEUDOCONSOLE_INHERIT_CURSOR
+	}
+
+	con, err := NewConPty(opts.Cols, opts.Rows, conFlags)
 	if err != nil {
 		return nil, err
 	}

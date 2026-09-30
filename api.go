@@ -51,6 +51,18 @@ type SpawnOpts struct {
 	// caller fails loudly instead of getting a different result per platform.
 	// CmdLine and Args are mutually exclusive.
 	CmdLine string
+
+	// InheritCursor starts the ConPTY at the cursor position of the host
+	// terminal. Without it, ConPTY clears the screen on its first paint, and
+	// Windows Terminal moves the visible output into the scrollback.
+	//
+	// ConPTY asks for the position with a DSR (`ESC[6n`) on the PTY output.
+	// The caller must copy the terminal reply from its stdin to PtyWriter.
+	// An older ConPTY waits for the reply with no timeout.
+	//
+	// Windows only. Other platforms ignore it, because a Unix PTY does not
+	// clear the screen when it starts.
+	InheritCursor bool
 }
 
 type Mux interface {
